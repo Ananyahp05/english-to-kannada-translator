@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English to Kannada Translator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌐 English to Kannada Translator</h1>
+            <p>Translate text and speech effortlessly</p>
+        </header>
+
+        <div class="translator-container">
+            <!-- Text Translation Section -->
+            <div class="translation-section">
+                <div class="section-header">
+                    <h2>📝 Text Translation</h2>
+                </div>
+                
+                <div class="input-output-group">
+                    <div class="input-group">
+                        <label for="englishText">English Text:</label>
+                        <textarea id="englishText" placeholder="Enter English text here..." rows="5"></textarea>
+                        <button class="btn btn-primary" onclick="translateText()">Translate Text</button>
+                    </div>
+                    
+                    <div class="output-group">
+                        <label for="kannadaText">Kannada Translation:</label>
+                        <textarea id="kannadaText" placeholder="Translation will appear here..." rows="5" readonly></textarea>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" onclick="copyToClipboard('kannadaText')">📋 Copy</button>
+                            <button class="btn btn-secondary" onclick="speakKannada()">🔊 Speak</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speech Translation Section -->
+            <div class="translation-section">
+                <div class="section-header">
+                    <h2>🎤 Speech Translation</h2>
+                </div>
+                
+                <div class="speech-group">
+                    <div class="recording-area">
+                        <div class="mic-container">
+                            <div class="mic-button-wrapper">
+                                <button class="btn btn-record" id="recordBtn" onclick="startRecording()">
+                                    🎙️ Start Recording
+                                </button>
+                                <span id="recordingTime" class="recording-time"></span>
+                            </div>
+                        </div>
+                        <p class="helper-text">Click the microphone button and speak in English</p>
+                        <audio id="audioPreview" controls style="display: none; margin-top: 10px;"></audio>
+                    </div>
+                    
+                    <div class="translation-results">
+                        <div class="result-item">
+                            <label>Recognized Speech:</label>
+                            <p id="recognizedText" class="result-text">-</p>
+                        </div>
+                        
+                        <div class="result-item">
+                            <label>Kannada Translation:</label>
+                            <p id="translatedSpeechText" class="result-text">-</p>
+                            <button class="btn btn-secondary" onclick="copySpeechTranslation()" style="display: none;" id="copySpeechBtn">📋 Copy</button>
+                        </div>
+                        
+                        <div class="result-item">
+                            <label>Translated Speech:</label>
+                            <audio id="translatedAudio" controls style="display: none;"></audio>
+                            <p id="noAudio" class="result-text">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>English to Kannada Translator © 2026 | Powered by Google Cloud APIs</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
