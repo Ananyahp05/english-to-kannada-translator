@@ -1,17 +1,28 @@
 from flask import Flask, render_template, request, jsonify
-from google.cloud import translate_v2
-from google.cloud import speech_v1
-from google.cloud import texttospeech_v1
+import pyttsx3
 import os
-import io
 import base64
+import requests
+from urllib.parse import quote
+import pkgutil
+import json
+
+# Patch pkgutil for Python 3.14 compatibility
+if not hasattr(pkgutil, 'get_loader'):
+    pkgutil.get_loader = lambda name: None
 
 app = Flask(__name__)
 
-# Initialize Google Cloud clients
-translate_client = translate_v2.Client()
-speech_client = speech_v1.SpeechClient()
-tts_client = texttospeech_v1.TextToSpeechClient()
+# Load Kannada dictionary
+with open('kannada_dict.json', 'r', encoding='utf-8') as f:
+    kannada_dict = json.load(f)
+
+# Initialize services
+tts_engine = pyttsx3.init()
+
+# Configure TTS
+tts_engine.setProperty('rate', 150)
+tts_engine.setProperty('volume', 0.9)
 
 # Language codes
 SOURCE_LANGUAGE = 'en'
@@ -31,14 +42,39 @@ def translate_text():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
         
-        # Translate using Google Cloud Translation API
-        result = translate_client.translate_text(
-            text,
-            source_language_code=SOURCE_LANGUAGE,
-            target_language_code=TARGET_LANGUAGE
-        )
-        
-        translated_text = result['translatedText']
+        # Check dictionary first
+        text_lower = text.lower()
+        if text_lower in kannada_dict:
+            translated_text = kannada_dict[text_lower]
+        else:
+            # Try to translate using Google's translation API via requests
+            try:
+                # Use a different approach - word by word from dictionary
+                words = text_lower.split()
+                translated_words = []
+                
+                for word in words:
+                    # Check if word exists in dictionary
+                    if word in kannada_dict:
+                        translated_words.append(kannada_dict[word])
+                    else:
+                        # Try to find partial matches or keep original
+                        translated_words.append(word)
+                
+                translated_text = ' '.join(translated_words)
+                
+                # If no translation found, try the API as fallback
+                if translated_text == text_lower:
+                    encoded_text = quote(text)
+                    url = f"https://api.mymemory.translated.net/get?q={encoded_text}&langpair=en|kn"
+                    response = requests.get(url, timeout=5)
+                    result = response.json()
+                    
+                    if result.get('responseStatus') == 200:
+                        translated_text = result['responseData'].get('translatedText', text)
+            except Exception as api_error:
+                print(f"API translation error: {api_error}")
+                translated_text = text
         
         return jsonify({
             'original': text,
@@ -47,72 +83,16 @@ def translate_text():
         })
     
     except Exception as e:
+        import traceback
+        print(f"Error in translate_text: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e), 'success': False}), 500
 
 @app.route('/translate-speech', methods=['POST'])
 def translate_speech():
-    """Translate speech from audio file"""
+    """Translate speech - simplified version"""
     try:
-        if 'audio' not in request.files:
-            return jsonify({'error': 'No audio file provided'}), 400
-        
-        audio_file = request.files['audio']
-        audio_data = audio_file.read()
-        
-        # Recognize speech
-        audio = speech_v1.RecognitionAudio(content=audio_data)
-        config = speech_v1.RecognitionConfig(
-            encoding=speech_v1.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code='en-US'
-        )
-        
-        response = speech_client.recognize(config=config, audio=audio)
-        
-        # Extract recognized text
-        transcript = ''
-        for result in response.results:
-            for alternative in result.alternatives:
-                transcript += alternative.transcript
-        
-        if not transcript:
-            return jsonify({'error': 'Could not recognize speech'}), 400
-        
-        # Translate the recognized text
-        translation_result = translate_client.translate_text(
-            transcript,
-            source_language_code=SOURCE_LANGUAGE,
-            target_language_code=TARGET_LANGUAGE
-        )
-        
-        translated_text = translation_result['translatedText']
-        
-        # Generate speech for translated text
-        synthesis_input = texttospeech_v1.SynthesisInput(text=translated_text)
-        voice = texttospeech_v1.VoiceSelectionParams(
-            language_code=f'{TARGET_LANGUAGE}-IN',
-            name='kn-IN-Neural2-A'
-        )
-        audio_config = texttospeech_v1.AudioConfig(
-            audio_encoding=texttospeech_v1.AudioEncoding.MP3
-        )
-        
-        tts_response = tts_client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
-        
-        # Encode audio to base64
-        audio_base64 = base64.b64encode(tts_response.audio_content).decode('utf-8')
-        
-        return jsonify({
-            'original': transcript,
-            'translated': translated_text,
-            'audio': audio_base64,
-            'success': True
-        })
-    
+        return jsonify({'error': 'Speech recognition not available in this version', 'success': False}), 501
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
 
@@ -127,28 +107,22 @@ def text_to_speech():
             return jsonify({'error': 'No text provided'}), 400
         
         # Generate speech
-        synthesis_input = texttospeech_v1.SynthesisInput(text=text)
-        voice = texttospeech_v1.VoiceSelectionParams(
-            language_code=f'{TARGET_LANGUAGE}-IN',
-            name='kn-IN-Neural2-A'
-        )
-        audio_config = texttospeech_v1.AudioConfig(
-            audio_encoding=texttospeech_v1.AudioEncoding.MP3
-        )
+        temp_file = 'temp_audio.mp3'
+        tts_engine.save_to_file(text, temp_file)
+        tts_engine.runAndWait()
         
-        response = tts_client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
-        
-        # Encode audio to base64
-        audio_base64 = base64.b64encode(response.audio_content).decode('utf-8')
-        
-        return jsonify({
-            'audio': audio_base64,
-            'success': True
-        })
+        # Read the audio file and encode to base64
+        if os.path.exists(temp_file):
+            with open(temp_file, 'rb') as f:
+                audio_base64 = base64.b64encode(f.read()).decode('utf-8')
+            os.remove(temp_file)
+            
+            return jsonify({
+                'audio': audio_base64,
+                'success': True
+            })
+        else:
+            return jsonify({'error': 'Failed to generate audio'}), 500
     
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
