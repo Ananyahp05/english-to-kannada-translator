@@ -3,4 +3,5 @@ Flask>=3.0.0
 google-cloud-translate>=3.14.0
 google-cloud-speech>=2.21.0
 google-cloud-texttospeech>=2.14.0
-protobuf>=4.26.0
+protobuf>=4.26.0gTTS>=2.5.0
+requests>=2.27.0

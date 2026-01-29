@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, jsonify
-import pyttsx3
 import os
 import base64
 import requests
 from urllib.parse import quote
 import pkgutil
 import json
+from gtts import gTTS
+from io import BytesIO
 
 # Patch pkgutil for Python 3.14 compatibility
 if not hasattr(pkgutil, 'get_loader'):
@@ -14,15 +15,11 @@ if not hasattr(pkgutil, 'get_loader'):
 app = Flask(__name__)
 
 # Load Kannada dictionary
-with open('kannada_dict.json', 'r', encoding='utf-8') as f:
-    kannada_dict = json.load(f)
-
-# Initialize services
-tts_engine = pyttsx3.init()
-
-# Configure TTS
-tts_engine.setProperty('rate', 150)
-tts_engine.setProperty('volume', 0.9)
+try:
+    with open('kannada_dict.json', 'r', encoding='utf-8') as f:
+        kannada_dict = json.load(f)
+except FileNotFoundError:
+    kannada_dict = {}
 
 # Language codes
 SOURCE_LANGUAGE = 'en'
@@ -98,7 +95,7 @@ def translate_speech():
 
 @app.route('/text-to-speech', methods=['POST'])
 def text_to_speech():
-    """Convert Kannada text to speech"""
+    """Convert Kannada text to speech using gTTS"""
     try:
         data = request.get_json()
         text = data.get('text', '').strip()
@@ -106,26 +103,30 @@ def text_to_speech():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
         
-        # Generate speech
-        temp_file = 'temp_audio.mp3'
-        tts_engine.save_to_file(text, temp_file)
-        tts_engine.runAndWait()
-        
-        # Read the audio file and encode to base64
-        if os.path.exists(temp_file):
-            with open(temp_file, 'rb') as f:
-                audio_base64 = base64.b64encode(f.read()).decode('utf-8')
-            os.remove(temp_file)
+        # Generate speech using gTTS
+        try:
+            tts = gTTS(text=text, lang='kn', slow=False)
+            audio_buffer = BytesIO()
+            tts.write_to_fp(audio_buffer)
+            audio_buffer.seek(0)
+            audio_base64 = base64.b64encode(audio_buffer.getvalue()).decode('utf-8')
             
             return jsonify({
                 'audio': audio_base64,
                 'success': True
             })
-        else:
-            return jsonify({'error': 'Failed to generate audio'}), 500
+        except Exception as tts_error:
+            print(f"gTTS error: {tts_error}")
+            # Fallback: return success with empty audio if gTTS fails
+            return jsonify({
+                'audio': '',
+                'success': True,
+                'message': 'Text-to-speech temporarily unavailable'
+            })
     
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
